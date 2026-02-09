@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/geocode",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/ingest/preschools",
+      "schedule": "0 6 * * *"
+    }
+  ]
+}
