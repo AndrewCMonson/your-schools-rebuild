@@ -1,0 +1,474 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum SchoolMembershipRole {
+  SCHOOL_ADMIN
+  SCHOOL_EDITOR
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+}
+
+enum ReviewStatus {
+  PUBLISHED
+  FLAGGED
+  HIDDEN
+  REMOVED
+}
+
+enum ClaimStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum FlagStatus {
+  PENDING
+  RESOLVED
+  DISMISSED
+}
+
+enum ParentPlanStatus {
+  SAVED
+  TOUR_REQUESTED
+  CONTACTED
+  APPLIED
+}
+
+enum IngestionSource {
+  HEAD_START
+  NCES_PK
+  VA_LICENSE
+  FL_LICENSE
+  TX_LICENSE
+}
+
+enum IngestionRunStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum DataConfidence {
+  HIGH
+  MEDIUM
+  LOW
+  UNKNOWN
+}
+
+enum MergeMatchMethod {
+  SOURCE_ID
+  LICENSE
+  NAME_ADDRESS
+  NEW
+}
+
+model User {
+  id            String      @id @default(cuid())
+  email         String      @unique
+  passwordHash  String
+  name          String?
+  zipcode       String?
+  theme         String      @default("light")
+  role          UserRole    @default(USER)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  reviews       Review[]
+  favorites     Favorite[]
+  claims        ClaimRequest[]
+  searchHistory SearchHistory[]
+  reviewFlags   ReviewFlag[] @relation("FlaggedByUser")
+  claimedSchools School[]    @relation("ClaimedSchoolOwner")
+  resetTokens   PasswordResetToken[]
+  schoolMemberships SchoolMembership[]
+  auditLogs     AuditLog[]
+  schoolFlagResponses ReviewFlag[] @relation("SchoolFlagResponder")
+  planItems     ParentPlanItem[]
+
+  accounts      Account[]
+  sessions      Session[]
+}
+
+model School {
+  id                     String       @id @default(cuid())
+  slug                   String       @unique
+  name                   String
+  address                String
+  city                   String
+  state                  String
+  zipcode                String
+  lat                    Float?
+  lng                    Float?
+  description            String?
+  phone                  String?
+  website                String?
+  email                  String?
+  minTuition             Int?
+  maxTuition             Int?
+  minAge                 Int?
+  maxAge                 Int?
+  offersDaycare          Boolean      @default(false)
+  earlyEnrollment        Boolean      @default(false)
+  daysOpen               String[]
+  daysClosed             String[]
+  openingHours           String?
+  closingHours           String?
+  minEnrollment          Int?
+  maxEnrollment          Int?
+  preschoolEnrollmentCount Int?
+  schoolWideEnrollment   Int?
+  minStudentTeacherRatio Float?
+  maxStudentTeacherRatio Float?
+  schoolWideStudentTeacherRatio Float?
+  ageDataConfidence      DataConfidence @default(UNKNOWN)
+  hoursDataConfidence    DataConfidence @default(UNKNOWN)
+  enrollmentDataConfidence DataConfidence @default(UNKNOWN)
+  ratioDataConfidence    DataConfidence @default(UNKNOWN)
+  ageDataSource          String?
+  hoursDataSource        String?
+  enrollmentDataSource   String?
+  ratioDataSource        String?
+  dataLastNormalizedAt   DateTime?
+  isVerified             Boolean      @default(false)
+  verifiedAt             DateTime?
+  verifiedByUserId       String?
+  claimedByUserId        String?
+  averageRating          Float?
+  reviewCount            Int          @default(0)
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+
+  images                 SchoolImage[]
+  reviews                Review[]
+  favorites              Favorite[]
+  claims                 ClaimRequest[]
+  claimedByUser          User?         @relation("ClaimedSchoolOwner", fields: [claimedByUserId], references: [id], onDelete: SetNull)
+  memberships            SchoolMembership[]
+  pageViews              SchoolPageView[]
+  sourceRecords          ProviderSourceRecord[]
+  licenses               License[]
+  planItems              ParentPlanItem[]
+
+  @@index([zipcode])
+  @@index([city])
+  @@index([state, city])
+  @@index([name])
+}
+
+model IngestionRun {
+  id              String            @id @default(cuid())
+  source          IngestionSource
+  status          IngestionRunStatus
+  recordsSeen     Int               @default(0)
+  recordsUpserted Int               @default(0)
+  recordsSkipped  Int               @default(0)
+  metadata        Json?
+  startedAt       DateTime          @default(now())
+  completedAt     DateTime?
+
+  errors          IngestionError[]
+
+  @@index([source, startedAt])
+  @@index([status, startedAt])
+}
+
+model IngestionError {
+  id        String       @id @default(cuid())
+  runId     String
+  recordKey String?
+  message   String
+  details   Json?
+  createdAt DateTime     @default(now())
+
+  run       IngestionRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, createdAt])
+}
+
+model ProviderSourceRecord {
+  id             String          @id @default(cuid())
+  source         IngestionSource
+  sourceRecordId String
+  schoolId       String?
+  state          String?
+  licenseNumber  String?
+  checksum       String?
+  matchMethod    MergeMatchMethod @default(NEW)
+  matchConfidence Float?
+  payload        Json
+  firstSeenAt    DateTime        @default(now())
+  lastSeenAt     DateTime        @default(now())
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  school         School?         @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+
+  @@unique([source, sourceRecordId])
+  @@index([schoolId])
+  @@index([state, licenseNumber])
+  @@index([matchMethod, matchConfidence])
+}
+
+model License {
+  id            String   @id @default(cuid())
+  schoolId      String
+  state         String
+  licenseNumber String
+  status        String?
+  issuingAgency String?
+  effectiveDate DateTime?
+  expiresDate   DateTime?
+  firstSeenAt   DateTime @default(now())
+  lastSeenAt    DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  school        School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([state, licenseNumber])
+  @@index([schoolId])
+}
+
+model DataCoverageSnapshot {
+  id                String          @id @default(cuid())
+  fieldKey          String
+  scope             String
+  source            IngestionSource?
+  totalCount        Int
+  populatedCount    Int
+  highConfidenceCount Int
+  capturedAt        DateTime        @default(now())
+
+  @@index([capturedAt])
+  @@index([fieldKey, scope, source])
+}
+
+model SchoolMembership {
+  id        String               @id @default(cuid())
+  userId    String
+  schoolId  String
+  role      SchoolMembershipRole
+  status    MembershipStatus     @default(ACTIVE)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school    School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, schoolId])
+  @@index([schoolId, role, status])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String
+  action     String
+  entityType String
+  entityId   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  actor      User     @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@index([entityType, entityId])
+  @@index([actorId, createdAt])
+}
+
+model SchoolPageView {
+  id        String   @id @default(cuid())
+  schoolId  String
+  viewedAt  DateTime @default(now())
+  source    String?
+
+  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, viewedAt])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model SchoolImage {
+  id        String   @id @default(cuid())
+  schoolId  String
+  url       String
+  alt       String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, sortOrder])
+}
+
+model Review {
+  id        String       @id @default(cuid())
+  schoolId  String
+  userId    String
+  rating    Int
+  body      String
+  childAgeYears Int?
+  attendanceMonths Int?
+  pros      String?
+  cons      String?
+  status    ReviewStatus @default(PUBLISHED)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  school    School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  flags     ReviewFlag[]
+
+  @@unique([schoolId, userId])
+  @@index([schoolId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model ParentPlanItem {
+  id        String           @id @default(cuid())
+  userId    String
+  schoolId  String
+  status    ParentPlanStatus @default(SAVED)
+  notes     String?
+  remindAt  DateTime?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school    School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, schoolId])
+  @@index([userId, status, updatedAt])
+}
+
+model Favorite {
+  id        String   @id @default(cuid())
+  userId    String
+  schoolId  String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, schoolId])
+}
+
+model SearchHistory {
+  id         String   @id @default(cuid())
+  userId     String?
+  query      String
+  zipcode    String?
+  town       String?
+  schoolName String?
+  filtersJson Json?
+  createdAt  DateTime @default(now())
+
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+}
+
+model ClaimRequest {
+  id             String      @id @default(cuid())
+  schoolId       String
+  userId         String
+  fullName       String
+  workEmail      String
+  phone          String
+  roleTitle      String
+  relationship   String
+  schoolDomain   String
+  proof          String
+  status         ClaimStatus @default(PENDING)
+  adminNotes     String?
+  reviewedById   String?
+  reviewedAt     DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  school         School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, status])
+}
+
+model ReviewFlag {
+  id           String     @id @default(cuid())
+  reviewId     String
+  userId       String?
+  reason       String
+  status       FlagStatus @default(PENDING)
+  reviewedById String?
+  reviewedAt   DateTime?
+  schoolResponse String?
+  respondedAt  DateTime?
+  responseUserId String?
+  createdAt    DateTime   @default(now())
+
+  review       Review     @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  user         User?      @relation("FlaggedByUser", fields: [userId], references: [id], onDelete: SetNull)
+  responseUser User?      @relation("SchoolFlagResponder", fields: [responseUserId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}

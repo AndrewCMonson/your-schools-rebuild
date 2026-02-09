@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="YourSchools">
+  <rect width="128" height="128" rx="24" fill="#0f172a"/>
+  <path d="M64 24 24 44v16c0 28 18 52 40 56 22-4 40-28 40-56V44L64 24Z" fill="#38bdf8"/>
+  <path d="M64 38 38 52v10c0 18 11 34 26 38 15-4 26-20 26-38V52L64 38Z" fill="#0f172a" opacity=".35"/>
+  <path d="M52 68c0-8 5-14 12-14s12 6 12 14-5 14-12 14-12-6-12-14Z" fill="#e2e8f0"/>
+</svg>
+
